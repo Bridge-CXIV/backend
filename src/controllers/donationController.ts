@@ -6,6 +6,22 @@ import { ApiError } from "../middleware/apiError";
 
 const nftTokenId = process.env.NFT_TOKEN_ID ?? "";
 
+const buildCompactDonationMetadata = (
+  donorId: string,
+  amount: number,
+  requestId: string,
+) => {
+  const compactMetadata = [
+    "GG",
+    donorId.slice(-8),
+    Number(amount).toString(),
+    requestId.slice(-8),
+    Date.now().toString(36),
+  ].join("|");
+
+  return Buffer.from(compactMetadata);
+};
+
 /**
  * POST /api/donations
  *
@@ -39,15 +55,10 @@ export const createDonation = async (req: Request, res: Response, next: NextFunc
     // Mint an NFT donation receipt via HTS
     let nftSerial: string | undefined;
     if (nftTokenId) {
-      const metadata = Buffer.from(
-        JSON.stringify({
-          donor: user.hederaAccountId ?? user.userId,
-          amount,
-          requestId,
-          requestTitle: request.title,
-          hcsTopicId: request.hcsTopicId,
-          timestamp: new Date().toISOString(),
-        }),
+      const metadata = buildCompactDonationMetadata(
+        user.hederaAccountId ?? user.userId,
+        amount,
+        requestId,
       );
       nftSerial = await mintDonationReceipt(nftTokenId, metadata);
 
