@@ -8,7 +8,6 @@ services:
   - type: web
     name: glassgive-backend
     runtime: node
-    rootDir: backend
     plan: starter
     region: oregon
     autoDeploy: true
