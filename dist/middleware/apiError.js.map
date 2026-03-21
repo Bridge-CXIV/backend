@@ -1,0 +1,1 @@
+{"version":3,"file":"apiError.js","sourceRoot":"","sources":["../../src/middleware/apiError.ts"],"names":[],"mappings":"AAAA,MAAM,OAAO,QAAS,SAAQ,KAAK;IACjC,UAAU,CAAS;IAEnB,YAAY,UAAkB,EAAE,OAAe;QAC7C,KAAK,CAAC,OAAO,CAAC,CAAC;QACf,IAAI,CAAC,UAAU,GAAG,UAAU,CAAC;QAC7B,MAAM,CAAC,cAAc,CAAC,IAAI,EAAE,QAAQ,CAAC,SAAS,CAAC,CAAC;IAClD,CAAC;CACF"}

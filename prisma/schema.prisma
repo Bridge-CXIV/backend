@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  DONOR
+}
+
+enum RequestType {
+  CHARITY
+  GRANT
+}
+
+enum RequestStatus {
+  PENDING_VERIFICATION
+  LIVE
+  FUNDED
+  EXPIRED
+  REJECTED
+}
+
+model User {
+  id              String           @id @default(cuid())
+  magicUserId     String?          @unique
+  hederaAccountId String?          @unique
+  walletAddress   String?          @unique
+  email           String?
+  displayName     String?
+  role            UserRole         @default(USER)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  requests        Request[]        @relation("RequestCreator")
+  donations       Donation[]       @relation("DonationDonor")
+  adminSignatures AdminSignature[]
+  impactUpdates   ImpactUpdate[]
+}
+
+model Request {
+  id                    String          @id @default(cuid())
+  type                  RequestType
+  status                RequestStatus   @default(PENDING_VERIFICATION)
+  title                 String
+  description           String
+  purpose               String
+  goalAmount            Decimal
+  currentAmount         Decimal         @default(0)
+  timelineEnd           DateTime
+  walletAddress         String
+  hcsTopicId            String?         @unique
+  hfsFileId             String?
+  metadata              Json?
+  imageUrl              String?
+  contractAddress       String?         @unique
+  nftTokenId            String?
+
+  // Grant-specific fields
+  businessType          String?
+  businessPlanHfsId     String?
+  proofOfBusinessHfsId  String?
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  creatorId             String
+  creator               User            @relation("RequestCreator", fields: [creatorId], references: [id])
+  donations             Donation[]      @relation("RequestDonations")
+  adminSignatures       AdminSignature[]
+  hcsMessages           HcsMessage[]
+  impactUpdates         ImpactUpdate[]
+}
+
+model Donation {
+  id              String    @id @default(cuid())
+  amount          Decimal
+  nftId           String?
+  tokenId         String?
+  transactionHash String?
+  memo            String?
+  createdAt       DateTime  @default(now())
+
+  requestId       String
+  donorId         String?
+  request         Request   @relation("RequestDonations", fields: [requestId], references: [id])
+  donor           User?     @relation("DonationDonor", fields: [donorId], references: [id])
+}
+
+model AdminSignature {
+  id         String   @id @default(cuid())
+  adminId    String
+  requestId  String
+  signature  String
+  createdAt  DateTime @default(now())
+
+  admin      User     @relation(fields: [adminId], references: [id])
+  request    Request  @relation(fields: [requestId], references: [id])
+
+  @@unique([adminId, requestId])
+}
+
+model HcsMessage {
+  id             String   @id @default(cuid())
+  topicId        String
+  sequenceNumber BigInt
+  body           String
+  loggedAt       DateTime @default(now())
+
+  requestId      String?
+  request        Request? @relation(fields: [requestId], references: [id])
+
+  @@index([topicId])
+  @@unique([topicId, sequenceNumber])
+  @@index([requestId])
+}
+
+model ImpactUpdate {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  hcsMessageId String?
+  createdAt   DateTime @default(now())
+
+  requestId   String
+  request     Request  @relation(fields: [requestId], references: [id])
+
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+
+  @@index([requestId])
+}

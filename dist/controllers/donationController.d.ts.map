@@ -1,0 +1,1 @@
+{"version":3,"file":"donationController.d.ts","sourceRoot":"","sources":["../../src/controllers/donationController.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,OAAO,EAAE,QAAQ,EAAE,MAAM,SAAS,CAAC;AAEjD,eAAO,MAAM,cAAc,GAAU,MAAM,OAAO,EAAE,KAAK,QAAQ,kBAEhE,CAAC;AAEF,eAAO,MAAM,aAAa,GAAU,MAAM,OAAO,EAAE,KAAK,QAAQ,kBAE/D,CAAC"}
