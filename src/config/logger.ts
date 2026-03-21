@@ -5,8 +5,12 @@ import path from "path";
 const consoleFormat = winston.format.combine(
   winston.format.colorize(),
   winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    let msg = `${timestamp} [${level}]: ${message}`;
+  winston.format.printf((info) => {
+    const { level, message, ...meta } = info;
+    const timestamp =
+      typeof info.timestamp === "string" ? info.timestamp : new Date().toISOString();
+
+    let msg = `${timestamp} [${level}]: ${String(message)}`;
     if (Object.keys(meta).length > 0) {
       msg += ` ${JSON.stringify(meta)}`;
     }

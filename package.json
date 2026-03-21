@@ -32,7 +32,8 @@
     "redis": "^4.6.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
     "@prisma/adapter-pg": "^7.5.0",
