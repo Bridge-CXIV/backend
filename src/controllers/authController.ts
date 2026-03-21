@@ -7,6 +7,37 @@ import { ApiError } from "../middleware/apiError";
 
 const jwtSecret = process.env.JWT_SECRET ?? "changeme";
 
+const signAuthToken = (user: {
+  id: string;
+  role: string;
+  magicUserId?: string | null;
+  hederaAccountId?: string | null;
+  email?: string | null;
+}) =>
+  jwt.sign(
+    {
+      userId: user.id,
+      role: user.role,
+      magicUserId: user.magicUserId ?? undefined,
+      hederaAccountId: user.hederaAccountId ?? undefined,
+      email: user.email ?? undefined,
+    } satisfies Express.AuthPayload,
+    jwtSecret,
+    { expiresIn: "7d" },
+  );
+
+const assertAdminRole = (role: string) => {
+  if (role !== "ADMIN") {
+    throw new ApiError(403, "Admin privileges are required");
+  }
+};
+
+const assertStandardUserRole = (role: string) => {
+  if (role === "ADMIN") {
+    throw new ApiError(403, "Admin accounts must sign in via /admin/login");
+  }
+};
+
 /**
  * POST /api/auth/magic
  *
@@ -74,18 +105,10 @@ export const magicLogin = async (req: Request, res: Response, next: NextFunction
       }
     }
 
+    assertStandardUserRole(user.role);
+
     // Sign a JWT
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        role: user.role,
-        magicUserId: user.magicUserId,
-        hederaAccountId: user.hederaAccountId,
-        email: user.email,
-      } satisfies Express.AuthPayload,
-      jwtSecret,
-      { expiresIn: "7d" },
-    );
+    const token = signAuthToken(user);
 
     res.json({
       token,
@@ -144,21 +167,93 @@ export const walletLogin = async (req: Request, res: Response, next: NextFunctio
       });
     }
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        role: user.role,
-        hederaAccountId: user.hederaAccountId,
-      } satisfies Express.AuthPayload,
-      jwtSecret,
-      { expiresIn: "7d" },
-    );
+    assertStandardUserRole(user.role);
+
+    const token = signAuthToken(user);
 
     res.json({
       token,
       user: {
         id: user.id,
         hederaAccountId: user.hederaAccountId,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminMagicLogin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { didToken: bodyToken } = req.body as { didToken?: string };
+    const headerToken = req.headers.authorization?.replace("Bearer ", "");
+    const didToken = bodyToken || headerToken;
+
+    if (!didToken) {
+      throw new ApiError(400, "DID token is required (either in body as 'didToken' or in Authorization header)");
+    }
+
+    await verifyDidToken(didToken);
+
+    const issuer = await getIssuer(didToken);
+    const user = await prisma.user.findUnique({
+      where: { magicUserId: issuer },
+    });
+
+    if (!user) {
+      throw new ApiError(403, "Admin account not found");
+    }
+
+    assertAdminRole(user.role);
+
+    const token = signAuthToken(user);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        hederaAccountId: user.hederaAccountId,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminWalletLogin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { accountId, signature } = req.body as {
+      accountId?: string;
+      signature?: string;
+    };
+
+    if (!accountId || !signature) {
+      throw new ApiError(400, "accountId and signature are required");
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ hederaAccountId: accountId }, { walletAddress: accountId }],
+      },
+    });
+
+    if (!user) {
+      throw new ApiError(403, "Admin account not found");
+    }
+
+    assertAdminRole(user.role);
+
+    const token = signAuthToken(user);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        hederaAccountId: user.hederaAccountId,
+        email: user.email,
         role: user.role,
       },
     });

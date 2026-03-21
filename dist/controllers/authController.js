@@ -3,13 +3,30 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletLogin = exports.magicLogin = void 0;
+exports.adminWalletLogin = exports.adminMagicLogin = exports.walletLogin = exports.magicLogin = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const db_1 = __importDefault(require("../config/db"));
 const magicService_1 = require("../services/magicService");
 const accountService_1 = require("../services/accountService");
 const apiError_1 = require("../middleware/apiError");
 const jwtSecret = process.env.JWT_SECRET ?? "changeme";
+const signAuthToken = (user) => jsonwebtoken_1.default.sign({
+    userId: user.id,
+    role: user.role,
+    magicUserId: user.magicUserId ?? undefined,
+    hederaAccountId: user.hederaAccountId ?? undefined,
+    email: user.email ?? undefined,
+}, jwtSecret, { expiresIn: "7d" });
+const assertAdminRole = (role) => {
+    if (role !== "ADMIN") {
+        throw new apiError_1.ApiError(403, "Admin privileges are required");
+    }
+};
+const assertStandardUserRole = (role) => {
+    if (role === "ADMIN") {
+        throw new apiError_1.ApiError(403, "Admin accounts must sign in via /admin/login");
+    }
+};
 /**
  * POST /api/auth/magic
  *
@@ -37,17 +54,33 @@ const magicLogin = async (req, res, next) => {
         });
         if (!user) {
             // First-time user: create a Hedera account for them
-            const publicKey = metadata.publicAddress ?? undefined;
-            const hederaAccountId = await (0, accountService_1.createHederaAccount)({ publicKey });
-            user = await db_1.default.user.create({
-                data: {
-                    magicUserId: issuer,
-                    hederaAccountId,
-                    walletAddress: metadata.publicAddress ?? undefined,
-                    email,
-                    role: "USER",
-                },
-            });
+            // We do not pass Magic's publicAddress as a publicKey because it's a 0x EVM address,
+            // not a DER-encoded Hedera public key. The account will use the operator key.
+            const hederaAccountId = await (0, accountService_1.createHederaAccount)();
+            try {
+                user = await db_1.default.user.create({
+                    data: {
+                        magicUserId: issuer,
+                        hederaAccountId,
+                        walletAddress: metadata.publicAddress ?? undefined,
+                        email,
+                        role: "USER",
+                    },
+                });
+            }
+            catch (err) {
+                // Handle concurrent request race condition
+                if (err.code === "P2002") {
+                    user = await db_1.default.user.findUnique({
+                        where: { magicUserId: issuer },
+                    });
+                    if (!user)
+                        throw err;
+                }
+                else {
+                    throw err;
+                }
+            }
         }
         else {
             // Update email if it changed
@@ -58,14 +91,9 @@ const magicLogin = async (req, res, next) => {
                 });
             }
         }
+        assertStandardUserRole(user.role);
         // Sign a JWT
-        const token = jsonwebtoken_1.default.sign({
-            userId: user.id,
-            role: user.role,
-            magicUserId: user.magicUserId,
-            hederaAccountId: user.hederaAccountId,
-            email: user.email,
-        }, jwtSecret, { expiresIn: "7d" });
+        const token = signAuthToken(user);
         res.json({
             token,
             user: {
@@ -116,11 +144,8 @@ const walletLogin = async (req, res, next) => {
                 },
             });
         }
-        const token = jsonwebtoken_1.default.sign({
-            userId: user.id,
-            role: user.role,
-            hederaAccountId: user.hederaAccountId,
-        }, jwtSecret, { expiresIn: "7d" });
+        assertStandardUserRole(user.role);
+        const token = signAuthToken(user);
         res.json({
             token,
             user: {
@@ -135,3 +160,67 @@ const walletLogin = async (req, res, next) => {
     }
 };
 exports.walletLogin = walletLogin;
+const adminMagicLogin = async (req, res, next) => {
+    try {
+        const { didToken: bodyToken } = req.body;
+        const headerToken = req.headers.authorization?.replace("Bearer ", "");
+        const didToken = bodyToken || headerToken;
+        if (!didToken) {
+            throw new apiError_1.ApiError(400, "DID token is required (either in body as 'didToken' or in Authorization header)");
+        }
+        await (0, magicService_1.verifyDidToken)(didToken);
+        const issuer = await (0, magicService_1.getIssuer)(didToken);
+        const user = await db_1.default.user.findUnique({
+            where: { magicUserId: issuer },
+        });
+        if (!user) {
+            throw new apiError_1.ApiError(403, "Admin account not found");
+        }
+        assertAdminRole(user.role);
+        const token = signAuthToken(user);
+        res.json({
+            token,
+            user: {
+                id: user.id,
+                hederaAccountId: user.hederaAccountId,
+                email: user.email,
+                role: user.role,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.adminMagicLogin = adminMagicLogin;
+const adminWalletLogin = async (req, res, next) => {
+    try {
+        const { accountId, signature } = req.body;
+        if (!accountId || !signature) {
+            throw new apiError_1.ApiError(400, "accountId and signature are required");
+        }
+        const user = await db_1.default.user.findFirst({
+            where: {
+                OR: [{ hederaAccountId: accountId }, { walletAddress: accountId }],
+            },
+        });
+        if (!user) {
+            throw new apiError_1.ApiError(403, "Admin account not found");
+        }
+        assertAdminRole(user.role);
+        const token = signAuthToken(user);
+        res.json({
+            token,
+            user: {
+                id: user.id,
+                hederaAccountId: user.hederaAccountId,
+                email: user.email,
+                role: user.role,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.adminWalletLogin = adminWalletLogin;

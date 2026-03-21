@@ -7,10 +7,37 @@ import {
   ContractFunctionParameters,
   TransactionReceipt,
   ContractId,
+  ReceiptStatusError,
+  Status,
+  TransactionRecord,
 } from "@hashgraph/sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+const parseFactoryContractId = (value: string): ContractId => {
+  if (value.startsWith("0x")) {
+    return ContractId.fromEvmAddress(0, 0, value);
+  }
+
+  return ContractId.fromString(value);
+};
+
+export const isFactoryOwnerRevert = (error: unknown): boolean =>
+  error instanceof Error &&
+  error.message.includes("Not the owner");
+
+export class ContractRevertError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContractRevertError";
+  }
+}
+
+const getRevertMessage = (record: TransactionRecord | null): string | null => {
+  const errorMessage = record?.contractFunctionResult?.errorMessage?.trim();
+  return errorMessage ? errorMessage : null;
+};
 
 class ContractService {
   private client: Client;
@@ -46,10 +73,11 @@ class ContractService {
     if (!factoryId) {
       throw new Error("FACTORY_CONTRACT_ID must be set");
     }
+    const contractId = parseFactoryContractId(factoryId);
 
     const transaction = new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString(factoryId))
-      .setGas(1000000) // Adjust gas as needed
+      .setContractId(contractId)
+      .setGas(4_000_000)
       .setFunction(
         "createCampaign",
         new ContractFunctionParameters()
@@ -59,7 +87,28 @@ class ContractService {
       );
 
     const response = await transaction.execute(this.client);
-    const receipt = await response.getReceipt(this.client);
+    let record: TransactionRecord | null = null;
+
+    try {
+      await response.getReceipt(this.client);
+    } catch (error) {
+      if (
+        error instanceof ReceiptStatusError &&
+        error.status.toString() === Status.ContractRevertExecuted.toString()
+      ) {
+        try {
+          record = await response.getRecord(this.client);
+        } catch {
+          record = null;
+        }
+
+        throw new ContractRevertError(
+          getRevertMessage(record) ?? "Factory contract reverted during campaign deployment",
+        );
+      }
+
+      throw error;
+    }
 
     // In Hedera, the address of the newly created contract is usually in the record's contract call result
     // Or we can parse the logs if we have the ABI.
@@ -67,7 +116,7 @@ class ContractService {
     
     // For now, we'll return a placeholder or implement log parsing if needed.
     // To get the deployed address reliably, we should fetch the transaction record.
-    const record = await response.getRecord(this.client);
+    record = record ?? await response.getRecord(this.client);
     const result = record.contractFunctionResult;
     
     if (!result) {
@@ -112,9 +161,10 @@ class ContractService {
   async addAdmin(adminEvmAddress: string): Promise<TransactionReceipt> {
     const factoryId = process.env.FACTORY_CONTRACT_ID;
     if (!factoryId) throw new Error("FACTORY_CONTRACT_ID missing");
+    const contractId = parseFactoryContractId(factoryId);
 
     const transaction = new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString(factoryId))
+      .setContractId(contractId)
       .setGas(200000)
       .setFunction(
         "addAdmin",
@@ -122,7 +172,28 @@ class ContractService {
       );
 
     const response = await transaction.execute(this.client);
-    return response.getReceipt(this.client);
+
+    try {
+      return await response.getReceipt(this.client);
+    } catch (error) {
+      if (
+        error instanceof ReceiptStatusError &&
+        error.status.toString() === Status.ContractRevertExecuted.toString()
+      ) {
+        let record: TransactionRecord | null = null;
+        try {
+          record = await response.getRecord(this.client);
+        } catch {
+          record = null;
+        }
+
+        throw new ContractRevertError(
+          getRevertMessage(record) ?? "Factory contract reverted while adding admin",
+        );
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -131,9 +202,10 @@ class ContractService {
   async removeAdmin(adminEvmAddress: string): Promise<TransactionReceipt> {
     const factoryId = process.env.FACTORY_CONTRACT_ID;
     if (!factoryId) throw new Error("FACTORY_CONTRACT_ID missing");
+    const contractId = parseFactoryContractId(factoryId);
 
     const transaction = new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString(factoryId))
+      .setContractId(contractId)
       .setGas(200000)
       .setFunction(
         "removeAdmin",
@@ -141,7 +213,28 @@ class ContractService {
       );
 
     const response = await transaction.execute(this.client);
-    return response.getReceipt(this.client);
+
+    try {
+      return await response.getReceipt(this.client);
+    } catch (error) {
+      if (
+        error instanceof ReceiptStatusError &&
+        error.status.toString() === Status.ContractRevertExecuted.toString()
+      ) {
+        let record: TransactionRecord | null = null;
+        try {
+          record = await response.getRecord(this.client);
+        } catch {
+          record = null;
+        }
+
+        throw new ContractRevertError(
+          getRevertMessage(record) ?? "Factory contract reverted while removing admin",
+        );
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -150,9 +243,10 @@ class ContractService {
   async getIsAdmin(adminEvmAddress: string): Promise<boolean> {
     const factoryId = process.env.FACTORY_CONTRACT_ID;
     if (!factoryId) throw new Error("FACTORY_CONTRACT_ID missing");
+    const contractId = parseFactoryContractId(factoryId);
 
     const query = new ContractCallQuery()
-      .setContractId(ContractId.fromString(factoryId))
+      .setContractId(contractId)
       .setGas(100000)
       .setFunction(
         "isAdmin",

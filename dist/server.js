@@ -12,7 +12,7 @@ const port = Number(process.env.PORT ?? 5050);
 const startServer = async () => {
     try {
         // 1. Verify Database Connection
-        await db_1.default.$connect();
+        await db_1.default.$queryRaw `SELECT 1`;
         console.info("✅ PostgreSQL: Connected successfully");
         // 2. Verify Redis Connection
         try {

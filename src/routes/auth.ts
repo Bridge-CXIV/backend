@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { magicLogin, walletLogin } from "../controllers/authController";
+import {
+  adminMagicLogin,
+  adminWalletLogin,
+  magicLogin,
+  walletLogin,
+} from "../controllers/authController";
 
 const router = Router();
 
@@ -49,6 +54,7 @@ const router = Router();
  *         description: Invalid DID token
  */
 router.post("/magic", magicLogin);
+router.post("/admin/magic", adminMagicLogin);
 
 /**
  * @swagger
@@ -91,5 +97,6 @@ router.post("/magic", magicLogin);
  *         description: Missing fields
  */
 router.post("/wallet", walletLogin);
+router.post("/admin/wallet", adminWalletLogin);
 
 export default router;

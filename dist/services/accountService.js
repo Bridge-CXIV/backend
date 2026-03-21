@@ -17,6 +17,9 @@ const createHederaAccount = async (options = {}) => {
     if (publicKey) {
         tx.setKey(sdk_1.PublicKey.fromString(publicKey));
     }
+    else {
+        tx.setKey(hedera_1.default.operatorPublicKey);
+    }
     const response = await tx.execute(hedera_1.default);
     const receipt = await response.getReceipt(hedera_1.default);
     return receipt.accountId?.toString() ?? "";

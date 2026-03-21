@@ -10,6 +10,8 @@ const storageService_1 = require("../services/storageService");
 const hcsService_1 = require("../services/hcsService");
 const cacheService_1 = require("../services/cacheService");
 const apiError_1 = require("../middleware/apiError");
+const isEvmAddress = (value) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
+const toJsonSafe = (value) => JSON.parse(JSON.stringify(value, (_key, currentValue) => typeof currentValue === "bigint" ? currentValue.toString() : currentValue));
 /**
  * POST /api/requests
  *
@@ -34,9 +36,13 @@ const createRequest = async (req, res, next) => {
         const creator = await db_1.default.user.findUnique({ where: { id: user.userId } });
         if (!creator)
             throw new apiError_1.ApiError(404, "User not found");
-        const walletAddress = creator.hederaAccountId ?? creator.walletAddress ?? "";
+        const walletAddress = isEvmAddress(creator.walletAddress)
+            ? creator.walletAddress
+            : isEvmAddress(creator.hederaAccountId)
+                ? creator.hederaAccountId
+                : "";
         if (!walletAddress) {
-            throw new apiError_1.ApiError(400, "User has no Hedera account or wallet address");
+            throw new apiError_1.ApiError(400, "User must have a valid EVM wallet address to create a request");
         }
         // Upload request metadata to HFS
         const metadataPayload = {
@@ -198,7 +204,7 @@ const getRequestById = async (req, res, next) => {
         if (!request) {
             throw new apiError_1.ApiError(404, "Request not found");
         }
-        res.json({ request });
+        res.json(toJsonSafe({ request }));
     }
     catch (error) {
         next(error);

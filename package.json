@@ -11,7 +11,9 @@
     "dev": "nodemon --watch src --exec \"ts-node\" src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "seed:admin": "ts-node scripts/seedAdmin.ts",
+    "deploy:factory": "ts-node scripts/deployFactory.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.81.0",

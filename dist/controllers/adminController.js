@@ -9,6 +9,7 @@ const multiSigService_1 = require("../services/multiSigService");
 const hcsService_1 = require("../services/hcsService");
 const contractService_1 = require("../services/contractService");
 const apiError_1 = require("../middleware/apiError");
+const isEvmAddress = (value) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
 /**
  * POST /api/admin/signatures
  *
@@ -133,8 +134,23 @@ const approveRequest = async (req, res, next) => {
         // 1. Deploy the campaign contract
         const campaignType = request.type === "CHARITY" ? 0 : 1;
         const deadline = Math.floor(request.timelineEnd.getTime() / 1000);
+        if (!isEvmAddress(request.walletAddress)) {
+            throw new apiError_1.ApiError(400, "Request creator does not have a valid EVM wallet address. Reconnect the creator wallet or recreate the request with a 0x address.");
+        }
         // contractService.createCampaign returns the EVM address
-        const contractAddress = await contractService_1.contractService.createCampaign(request.walletAddress, deadline, campaignType);
+        let contractAddress;
+        try {
+            contractAddress = await contractService_1.contractService.createCampaign(request.walletAddress, deadline, campaignType);
+        }
+        catch (error) {
+            if ((0, contractService_1.isFactoryOwnerRevert)(error)) {
+                throw new apiError_1.ApiError(403, "Campaign deployment failed because the backend Hedera operator is not the factory owner. Update HEDERA_OPERATOR_ID/HEDERA_OPERATOR_KEY to the deployer account.");
+            }
+            if (error instanceof contractService_1.ContractRevertError) {
+                throw new apiError_1.ApiError(400, `Campaign deployment failed: ${error.message}`);
+            }
+            throw error;
+        }
         // 2. Create a dedicated HCS topic for this request
         const topicId = await (0, hcsService_1.createTopic)(`GlassGive | ${request.type} | ${request.title}`);
         // 3. Log the approval event
@@ -287,11 +303,22 @@ const syncContractAdmin = async (req, res, next) => {
         if (!user || !user.walletAddress) {
             throw new apiError_1.ApiError(400, "User not found or has no wallet connected.");
         }
-        if (action === "ADD") {
-            await contractService_1.contractService.addAdmin(user.walletAddress);
+        try {
+            if (action === "ADD") {
+                await contractService_1.contractService.addAdmin(user.walletAddress);
+            }
+            else {
+                await contractService_1.contractService.removeAdmin(user.walletAddress);
+            }
         }
-        else {
-            await contractService_1.contractService.removeAdmin(user.walletAddress);
+        catch (error) {
+            if ((0, contractService_1.isFactoryOwnerRevert)(error)) {
+                throw new apiError_1.ApiError(403, "On-chain admin sync failed because the backend Hedera operator is not the factory owner. Update HEDERA_OPERATOR_ID/HEDERA_OPERATOR_KEY to the deployer account.");
+            }
+            if (error instanceof contractService_1.ContractRevertError) {
+                throw new apiError_1.ApiError(400, `On-chain admin sync failed: ${error.message}`);
+            }
+            throw error;
         }
         res.json({
             message: `Successfully ${action === "ADD" ? "added" : "removed"} admin on-chain.`,

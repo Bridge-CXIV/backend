@@ -3,6 +3,8 @@ import { createTopic, submitMessage } from "./hcsService";
 import { contractService } from "./contractService";
 
 const threshold = Number(process.env.ADMIN_SIG_THRESHOLD ?? 2);
+const isEvmAddress = (value?: string | null): value is string =>
+  typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
 
 export const recordSignature = async (
   adminId: string,
@@ -51,6 +53,12 @@ export const checkThresholdAndActivate = async (
   // 1. Deploy the campaign contract
   const campaignType = request.type === "CHARITY" ? 0 : 1;
   const deadline = Math.floor(request.timelineEnd.getTime() / 1000);
+
+  if (!isEvmAddress(request.walletAddress)) {
+    throw new Error(
+      "Request creator does not have a valid EVM wallet address. Reconnect the creator wallet or recreate the request with a 0x address.",
+    );
+  }
 
   // contractService.createCampaign returns the EVM address
   const contractAddress = await contractService.createCampaign(

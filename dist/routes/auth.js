@@ -49,6 +49,7 @@ const router = (0, express_1.Router)();
  *         description: Invalid DID token
  */
 router.post("/magic", authController_1.magicLogin);
+router.post("/admin/magic", authController_1.adminMagicLogin);
 /**
  * @swagger
  * /auth/wallet:
@@ -90,4 +91,5 @@ router.post("/magic", authController_1.magicLogin);
  *         description: Missing fields
  */
 router.post("/wallet", authController_1.walletLogin);
+router.post("/admin/wallet", authController_1.adminWalletLogin);
 exports.default = router;

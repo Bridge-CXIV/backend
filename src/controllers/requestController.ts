@@ -6,6 +6,16 @@ import { submitMessage } from "../services/hcsService";
 import { getCachedValue, setCachedValue, deleteCachedValue } from "../services/cacheService";
 import { ApiError } from "../middleware/apiError";
 
+const isEvmAddress = (value?: string | null): value is string =>
+  typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
+
+const toJsonSafe = <T>(value: T): T =>
+  JSON.parse(
+    JSON.stringify(value, (_key, currentValue) =>
+      typeof currentValue === "bigint" ? currentValue.toString() : currentValue,
+    ),
+  ) as T;
+
 /**
  * POST /api/requests
  *
@@ -24,8 +34,10 @@ export const createRequest = async (req: Request, res: Response, next: NextFunct
       purpose,
       goalAmount,
       timelineEnd,
+      category,
       // Grant-specific
       businessType,
+      registrationId,
     } = req.body as {
       type: "CHARITY" | "GRANT";
       title: string;
@@ -33,7 +45,9 @@ export const createRequest = async (req: Request, res: Response, next: NextFunct
       purpose: string;
       goalAmount: number;
       timelineEnd: string;
+      category?: string;
       businessType?: string;
+      registrationId?: string;
     };
 
     if (!type || !title || !description || !purpose || !goalAmount || !timelineEnd) {
@@ -48,9 +62,14 @@ export const createRequest = async (req: Request, res: Response, next: NextFunct
     const creator = await prisma.user.findUnique({ where: { id: user.userId } });
     if (!creator) throw new ApiError(404, "User not found");
 
-    const walletAddress = creator.hederaAccountId ?? creator.walletAddress ?? "";
+    const walletAddress = isEvmAddress(creator.walletAddress)
+      ? creator.walletAddress
+      : isEvmAddress(creator.hederaAccountId)
+        ? creator.hederaAccountId
+        : "";
+
     if (!walletAddress) {
-      throw new ApiError(400, "User has no Hedera account or wallet address");
+      throw new ApiError(400, "User must have a valid EVM wallet address to create a request");
     }
 
     // Upload request metadata to HFS
@@ -61,7 +80,9 @@ export const createRequest = async (req: Request, res: Response, next: NextFunct
       goalAmount,
       timelineEnd,
       type,
-      businessType,
+      category: category || undefined,
+      businessType: businessType || undefined,
+      registrationId: registrationId || undefined,
       createdAt: new Date().toISOString(),
     };
     const hfsFileId = await uploadMetadata(metadataPayload);
@@ -230,7 +251,7 @@ export const getRequestById = async (req: Request, res: Response, next: NextFunc
       throw new ApiError(404, "Request not found");
     }
 
-    res.json({ request });
+    res.json(toJsonSafe({ request }));
   } catch (error) {
     next(error);
   }
