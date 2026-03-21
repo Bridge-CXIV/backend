@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import prisma from "../config/db";
 import { mintDonationReceipt, transferNft } from "../services/htsService";
+import { keccak256 } from "ethers";
 import { submitMessage } from "../services/hcsService";
 import { ApiError } from "../middleware/apiError";
 
@@ -19,7 +20,9 @@ const buildCompactDonationMetadata = (
     Date.now().toString(36),
   ].join("|");
 
-  return Buffer.from(compactMetadata);
+  const rawBytes = Buffer.from(compactMetadata);
+  const hashHex = keccak256(rawBytes);
+  return Buffer.from(hashHex.slice(2), "hex");
 };
 
 /**
@@ -60,6 +63,9 @@ export const createDonation = async (req: Request, res: Response, next: NextFunc
         amount,
         requestId,
       );
+      if (metadata.length > 100) {
+        throw new ApiError(400, "HTS: metadata too long");
+      }
       nftSerial = await mintDonationReceipt(nftTokenId, metadata);
 
       // Attempt to transfer the NFT to the donor if they have a Hedera ID
