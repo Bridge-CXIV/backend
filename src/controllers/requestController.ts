@@ -87,18 +87,18 @@ export const createRequest = async (req: Request, res: Response, next: NextFunct
     };
     const hfsFileId = await uploadMetadata(metadataPayload);
 
-    // Handle image upload if present (multer file)
+    // Handle uploads (multer fields)
     let imageUrl: string | undefined;
-    const file = (req as any).file as Express.Multer.File | undefined;
-    if (file) {
-      const result = await uploadFile(file.buffer, file.originalname);
+    const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+    const imageFile = files?.["image"]?.[0];
+    if (imageFile) {
+      const result = await uploadFile(imageFile.buffer, imageFile.originalname);
       imageUrl = result.url;
     }
 
     // Handle document uploads for grant requests
     let businessPlanHfsId: string | undefined;
     let proofOfBusinessHfsId: string | undefined;
-    const files = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
 
     if (type === "GRANT" && files) {
       if (files["businessPlan"]?.[0]) {
